@@ -12,10 +12,7 @@ module filter_tb();
 	reg  s_tvalid, s_tuser, s_tlast, m_tready;
 	wire m_tvalid, m_tuser, m_tlast, s_tready;
 	
-	always begin
-		s_tdata = $random;
-		#PERIOD;
-	end
+	always @(posedge clk) s_tdata = $random;
 
 	stream_video_filter
 	#(

@@ -18,7 +18,7 @@ module stream_video_filter(
 	`define SIMULATION = 1;
 
 	parameter FILTER_CORE_DIM = 5;
-	
+
 	localparam LINE_TRANS_NUM = FILTER_CORE_DIM/2;
 	localparam COPY_FIRST = FILTER_CORE_DIM/2;
 	localparam COPY_LAST  = FILTER_CORE_DIM - FILTER_CORE_DIM/2 - 1;
@@ -28,7 +28,6 @@ module stream_video_filter(
 	reg [7:0] line_cnt;
 	reg [7:0] col_cnt;
 
-	wire col_ready;
 	reg res_valid, res_tlast;
 
 	// -------------------------------- //
@@ -53,12 +52,9 @@ module stream_video_filter(
 
 	reg [creg_msb:0] col_state = COL_FIRST;
 
-	assign col_ready = (col_state != COL_COPY_FIRST) && (col_state != COL_COPY_LAST) && (col_state != COL_ENDL);
-
 	always @(posedge clk) begin
-		if (!reset) begin
+		if (!reset)
 			col_state <= COL_FIRST;
-		end
 		else case (col_state)
 			COL_FIRST : begin
 				if (rxt)
@@ -109,14 +105,14 @@ module stream_video_filter(
 	// -------------------------------- //
 
 	`ifdef SIMULATION
-		localparam LINE_TRANS     = "LINE_TRANS";
+		localparam LINE_TRANS     = "LINE_TRANS    ";
 		localparam LINE_FIST_LINE = "LINE_FIST_LINE";
-		localparam LINE_DATA      = "LINE_DATA";
+		localparam LINE_DATA      = "LINE_DATA     ";
 		localparam lreg_msb = 120;
 	`else
 		localparam LINE_TRANS     = 3'b001;
 		localparam LINE_FIST_LINE = 3'b010;
-		localparam LINE_DATA      = 3'b010;
+		localparam LINE_DATA      = 3'b100;
 		localparam lreg_msb = 3;
 	`endif
 
@@ -155,7 +151,44 @@ module stream_video_filter(
 
 	// -------------------------------- //
 
+	assign col_ready = (col_state != COL_COPY_FIRST) && (col_state != COL_COPY_LAST) && (col_state != COL_ENDL);
 	assign s_axis_video_tready = (col_ready && m_axis_video_tready);
 	assign rxt = (s_axis_video_tready && s_axis_video_tvalid);
+
+	// -------------------------------- //
+
+	parameter MAX_IMG_RES = 20;
+
+	reg [23:0] linebuff [FILTER_CORE_DIM-1:0][MAX_IMG_RES-1:0];
+
+	reg [15:0] buff_cnt;
+
+	reg [23:0] buff_out[FILTER_CORE_DIM-1:0];
+
+	always @(posedge clk) begin
+		if (!reset)
+			buff_cnt <= 0;
+		else if (rxt) begin
+			if (s_axis_video_tlast)
+				buff_cnt <= 0;
+			else
+				buff_cnt <= buff_cnt + 1;
+		end
+	end
+
+	integer t = 0;
+
+	always @(posedge clk) begin
+		if (reset)
+			if (rxt) begin
+				for (t = 0;t<FILTER_CORE_DIM;t=t+1)
+					buff_out[t] = linebuff[t][buff_cnt];
+				for (t = 1;t<FILTER_CORE_DIM;t=t+1)
+					linebuff[t][buff_cnt] <= buff_out[t-1];
+				linebuff[0][buff_cnt] = s_axis_video_tdata;
+			end
+	end
+
+
 
 endmodule
