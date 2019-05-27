@@ -97,11 +97,6 @@ module stream_video_filter(
 			col_cnt <= 0;
 	end
 
-	always @* begin
-		res_valid <= (col_state == COL_REMAINING) || (col_state == COL_COPY_LAST);
-		res_tlast <= (col_cnt == COPY_LAST - 1) && (col_state == COL_COPY_LAST);
-	end
-
 	// -------------------------------- //
 
 	`ifdef SIMULATION
@@ -176,19 +171,112 @@ module stream_video_filter(
 		end
 	end
 
-	integer t = 0;
+	integer i, j, t;
+
+	reg [23:0] in_data_buff;
 
 	always @(posedge clk) begin
-		if (reset)
+		if (!reset) begin
+			in_data_buff <= 24'b0;
+			for (i=0; i<FILTER_CORE_DIM; i=i+1)
+				for (j=0; j<MAX_IMG_RES; j=j+1)
+					linebuff[i][j] <= 24'b0;
+			for (i=0; i<FILTER_CORE_DIM; i=i+1)
+				buff_out[i] <= 24'b0;
+		end else
 			if (rxt) begin
-				for (t = 0;t<FILTER_CORE_DIM;t=t+1)
+				for (t=0; t<FILTER_CORE_DIM; t=t+1)
 					buff_out[t] = linebuff[t][buff_cnt];
-				for (t = 1;t<FILTER_CORE_DIM;t=t+1)
+				for (t=1; t<FILTER_CORE_DIM; t=t+1)
 					linebuff[t][buff_cnt] <= buff_out[t-1];
 				linebuff[0][buff_cnt] = s_axis_video_tdata;
+				in_data_buff <= s_axis_video_tdata;
 			end
 	end
 
+	// -------------------------------- //
 
+	reg mat_valid;
+
+	always @(posedge clk) begin
+		if (!reset) begin
+			res_valid <= 1'b0;
+			res_tlast <= 1'b0;
+			mat_valid <= 1'b0;
+		end else begin
+			res_valid <= (col_state == COL_REMAINING) || (col_state == COL_COPY_LAST);
+			res_tlast <= (col_cnt == COPY_LAST - 1) && (col_state == COL_COPY_LAST);
+			mat_valid <= ((col_state == COL_FIRST) && rxt)
+				|| (col_state == COL_COPY_FIRST)
+				|| (col_state == COL_SECOND)
+				|| ((col_state == COL_REMAINING) && rxt)
+				|| (col_state == COL_COPY_LAST);
+		end
+	end
+
+	// -------------------------------- //
+
+	reg [23:0] matrix_data [FILTER_CORE_DIM-1:0][FILTER_CORE_DIM-1:0];
+
+	reg [FILTER_CORE_DIM-1:0] mat_we;
+
+	always @(posedge clk) begin
+		if (!reset)
+			mat_we <= {FILTER_CORE_DIM{1'b0}};
+		else
+			// LINE_TRANS -> LINE_FIST_LINE
+			if (col_state == COL_FIRST && rxt && line_state == LINE_FIST_LINE)
+				for (t=0; t<FILTER_CORE_DIM; t=t+1)
+					mat_we[t] <= (t <= LINE_TRANS_NUM) ? 1'b1 : 1'b0;
+
+			// LINE_DATA -> LINE_TRANS
+			else if (line_state == LINE_DATA && rxt && s_axis_video_tuser)
+				mat_we[0] = 1'b0;
+
+			// shift left
+			else if (col_state == COL_FIRST)
+				mat_we <= {mat_we[FILTER_CORE_DIM-2:0], mat_we[0]};
+	end
+
+	reg [23:0] data_tmp = 24'b0;
+
+	always @(posedge clk) begin
+		if (!reset)
+			for (i=0; i<FILTER_CORE_DIM; i=i+1)
+				for (j=0; j<FILTER_CORE_DIM; j=j+1)
+					matrix_data[i][j] = 0;
+		else begin
+			// first, shift the data
+			for (i=0; i<FILTER_CORE_DIM; i=i+1)
+				for (j=1; j<FILTER_CORE_DIM; j=j+1)
+					matrix_data[i][j] <= matrix_data[i][j-1];
+
+			// then update first column
+			if (line_state == LINE_TRANS) begin
+				for (t=0; t<FILTER_CORE_DIM; t=t+1) begin
+					// fill from buffer according to mask
+					if (mat_we[t])
+						matrix_data[t][0] = buff_out[t-1];
+
+					// fill the last lines with the same data
+					else
+						matrix_data[t][0] = buff_out[line_cnt];
+				end
+			end else begin
+				for (t=1; t<FILTER_CORE_DIM; t=t+1) begin
+					// fill from buffer according to mask
+					if (mat_we[t]) begin
+						matrix_data[t][0] = buff_out[t-1];
+						data_tmp = buff_out[t-1];
+
+					// repeat last line
+					end else matrix_data[t][0] = data_tmp;
+				end
+				// first line goes directly from bus
+				if (mat_we[0])
+					matrix_data[0][0] = in_data_buff;
+			end
+		end
+	end
 
 endmodule
