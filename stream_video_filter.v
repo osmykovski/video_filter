@@ -23,6 +23,12 @@ module stream_video_filter(
 	localparam COPY_FIRST = FILTER_CORE_DIM/2;
 	localparam COPY_LAST  = FILTER_CORE_DIM - FILTER_CORE_DIM/2 - 1;
 
+	parameter COE_WIDTH = 16;
+
+	reg signed [COE_WIDTH-1:0] coe_matrix [FILTER_CORE_DIM-1:0][FILTER_CORE_DIM-1:0];
+	initial
+		$readmemh("../coe.dat", coe_matrix);
+
 	wire rxt; // rx transfer
 
 	reg [7:0] line_cnt;
@@ -277,6 +283,35 @@ module stream_video_filter(
 					matrix_data[0][0] = in_data_buff;
 			end
 		end
+	end
+
+	// -------------------------------- //
+
+	reg signed [8:0] mul_out_matrix [FILTER_CORE_DIM-1:0][FILTER_CORE_DIM-1:0][2:0];
+
+	// 1 sign + 8 data + COE_WIDTH coeff - 1 coeff sign
+	reg signed [8+COE_WIDTH:0] reg_rgb[2:0];
+
+	always @(posedge clk) begin
+		if (!reset)
+			for (i=0; i<FILTER_CORE_DIM; i=i+1)
+				for (j=0; j<FILTER_CORE_DIM; j=j+1) begin
+					mul_out_matrix[i][j][0] = 'b0;
+					mul_out_matrix[i][j][1] = 'b0;
+					mul_out_matrix[i][j][2] = 'b0;
+				end
+		else
+			for (i=0; i<FILTER_CORE_DIM; i=i+1)
+				for (j=0; j<FILTER_CORE_DIM; j=j+1) begin
+
+					reg_rgb[0] = $signed({1'b0, matrix_data[i][j][23:16]}) * coe_matrix[i][j];
+					reg_rgb[1] = $signed({1'b0, matrix_data[i][j][15:8]})  * coe_matrix[i][j];
+					reg_rgb[2] = $signed({1'b0, matrix_data[i][j][7:0]})   * coe_matrix[i][j];
+
+					mul_out_matrix[i][j][0] = reg_rgb[0] / 2**(COE_WIDTH-1);
+					mul_out_matrix[i][j][1] = reg_rgb[1] / 2**(COE_WIDTH-1);
+					mul_out_matrix[i][j][2] = reg_rgb[2] / 2**(COE_WIDTH-1);
+				end
 	end
 
 endmodule
