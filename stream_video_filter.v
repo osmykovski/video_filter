@@ -296,22 +296,52 @@ module stream_video_filter(
 		if (!reset)
 			for (i=0; i<FILTER_CORE_DIM; i=i+1)
 				for (j=0; j<FILTER_CORE_DIM; j=j+1) begin
-					mul_out_matrix[i][j][0] = 'b0;
-					mul_out_matrix[i][j][1] = 'b0;
-					mul_out_matrix[i][j][2] = 'b0;
+					mul_out_matrix[i][j][0] <= 'b0;
+					mul_out_matrix[i][j][1] <= 'b0;
+					mul_out_matrix[i][j][2] <= 'b0;
 				end
 		else
 			for (i=0; i<FILTER_CORE_DIM; i=i+1)
 				for (j=0; j<FILTER_CORE_DIM; j=j+1) begin
 
+					// note: matrix_data is flipped horizontally and vertically
 					reg_rgb[0] = $signed({1'b0, matrix_data[i][j][23:16]}) * coe_matrix[i][j];
 					reg_rgb[1] = $signed({1'b0, matrix_data[i][j][15:8]})  * coe_matrix[i][j];
 					reg_rgb[2] = $signed({1'b0, matrix_data[i][j][7:0]})   * coe_matrix[i][j];
 
-					mul_out_matrix[i][j][0] = reg_rgb[0] / 2**(COE_WIDTH-1);
-					mul_out_matrix[i][j][1] = reg_rgb[1] / 2**(COE_WIDTH-1);
-					mul_out_matrix[i][j][2] = reg_rgb[2] / 2**(COE_WIDTH-1);
+					mul_out_matrix[i][j][0] <= reg_rgb[0] / 2**(COE_WIDTH-1);
+					mul_out_matrix[i][j][1] <= reg_rgb[1] / 2**(COE_WIDTH-1);
+					mul_out_matrix[i][j][2] <= reg_rgb[2] / 2**(COE_WIDTH-1);
 				end
+	end
+
+	// -------------------------------- //
+
+	localparam NORM_FACTOR = (2**16)/(FILTER_CORE_DIM**2);
+
+	reg signed [23:0] conv_sum[2:0];
+	reg signed [23:0] conv_div[2:0];
+
+	always @(posedge clk) begin
+		if (!reset)
+			for (t=0; t<3; t=t+1)
+				conv_sum[t] <= 'b0;
+		else
+			for (t=0; t<3; t=t+1)
+				conv_sum[t] = 'b0;
+			for (t=0; t<3; t=t+1)
+				for (i=0; i<FILTER_CORE_DIM; i=i+1)
+					for (j=0; j<FILTER_CORE_DIM; j=j+1)
+						conv_sum[t] = conv_sum[t] + mul_out_matrix[i][j][t];
+	end
+
+	always @(posedge clk) begin
+		if (!reset)
+			for (t=0; t<3; t=t+1)
+				conv_div[t] <= 'b0;
+		else
+			for (t=0; t<3; t=t+1)
+				conv_div[t] <= conv_sum[t] * NORM_FACTOR / 2**16;
 	end
 
 endmodule
