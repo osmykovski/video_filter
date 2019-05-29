@@ -14,6 +14,8 @@ module filter_tb();
 	
 	always @(posedge clk) s_tdata = $random;
 
+	always @(posedge clk) m_tready = $random;
+
 	stream_video_filter
 	#(
 		.FILTER_CORE_DIM(5)
@@ -86,7 +88,7 @@ module filter_tb();
 
 	initial begin : rst_gen
 		s_tvalid = 1'b1;
-		m_tready = 1'b1;
+		// m_tready = 1'b1;
 		#100;
 		rst <= 1'b1;
 	end

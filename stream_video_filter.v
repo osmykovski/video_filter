@@ -24,10 +24,11 @@ module stream_video_filter(
 	localparam COPY_LAST  = FILTER_CORE_DIM - FILTER_CORE_DIM/2 - 1;
 
 	parameter COE_WIDTH = 16;
+	parameter COE_FILE = "../coe.dat";
 
 	reg signed [COE_WIDTH-1:0] coe_matrix [FILTER_CORE_DIM-1:0][FILTER_CORE_DIM-1:0];
 	initial
-		$readmemh("../coe.dat", coe_matrix);
+		$readmemh(COE_FILE, coe_matrix);
 
 	wire rxt; // rx transfer
 
@@ -59,7 +60,7 @@ module stream_video_filter(
 	always @(posedge clk) begin
 		if (!reset)
 			col_state <= COL_FIRST;
-		else case (col_state)
+		else if (m_axis_video_tready) case (col_state)
 			COL_FIRST : begin
 				if (rxt)
 					col_state <= COL_COPY_FIRST;
@@ -90,15 +91,15 @@ module stream_video_filter(
 	end
 
 	always @(posedge clk) begin
-		if (!reset) begin
+		if (!reset)
 			col_cnt <= 0;
-		end
-		else if (col_state == COL_COPY_FIRST)
-			col_cnt <= col_cnt + 1;
-		else if (col_state == COL_COPY_LAST)
-			col_cnt <= col_cnt + 1;
-		else
-			col_cnt <= 0;
+		else if (m_axis_video_tready)
+			if (col_state == COL_COPY_FIRST)
+				col_cnt <= col_cnt + 1;
+			else if (col_state == COL_COPY_LAST)
+				col_cnt <= col_cnt + 1;
+			else
+				col_cnt <= 0;
 	end
 
 	// -------------------------------- //
@@ -120,7 +121,7 @@ module stream_video_filter(
 	always @(posedge clk) begin
 		if (!reset)
 			line_state <= LINE_TRANS;
-		else case (line_state)
+		else if (m_axis_video_tready) case (line_state)
 			LINE_TRANS : begin
 				if (col_state == COL_ENDL && line_cnt == LINE_TRANS_NUM - 1)
 					line_state <= LINE_FIST_LINE;
@@ -142,10 +143,11 @@ module stream_video_filter(
 	always @(posedge clk) begin
 		if (!reset)
 			line_cnt <= 0;
-		else if (line_state == LINE_TRANS && col_state == COL_ENDL)
-			line_cnt <= line_cnt + 1;
-		else if (rxt && s_axis_video_tuser)
-			line_cnt <= 0;
+		else if (m_axis_video_tready)
+			if (line_state == LINE_TRANS && col_state == COL_ENDL)
+				line_cnt <= line_cnt + 1;
+			else if (rxt && s_axis_video_tuser)
+				line_cnt <= 0;
 	end
 
 	// -------------------------------- //
@@ -167,7 +169,7 @@ module stream_video_filter(
 	always @(posedge clk) begin
 		if (!reset)
 			buff_cnt <= 0;
-		else if (rxt) begin
+		else if (m_axis_video_tready && rxt) begin
 			if (s_axis_video_tlast)
 				buff_cnt <= 0;
 			else
@@ -187,7 +189,7 @@ module stream_video_filter(
 					linebuff[i][j] <= 24'b0;
 			for (i=0; i<FILTER_CORE_DIM; i=i+1)
 				buff_out[i] <= 24'b0;
-		end else
+		end else if (m_axis_video_tready)
 			if (rxt) begin
 				for (t=0; t<FILTER_CORE_DIM; t=t+1)
 					buff_out[t] <= linebuff[t][buff_cnt];
@@ -201,14 +203,17 @@ module stream_video_filter(
 	// -------------------------------- //
 
 	reg [4:0] res_valid, res_tlast;
+	reg [5:0] res_tuser;
 
 	always @(posedge clk) begin
 		if (!reset) begin
 			res_valid <= 'b0;
 			res_tlast <= 'b0;
-		end else begin
+			res_tuser <= 'b0;
+		end else if (m_axis_video_tready) begin
 			res_valid <= {res_valid[3:0], (col_state != COL_FIRST) && (col_state != COL_COPY_FIRST) && (col_state != COL_SECOND)};
 			res_tlast <= {res_tlast[3:0], (col_state == COL_ENDL)};
+			res_tuser <= {res_tuser[4:0], (col_state == COL_SECOND) && (line_state == LINE_FIST_LINE)};
 		end
 	end
 
@@ -221,7 +226,7 @@ module stream_video_filter(
 	always @(posedge clk) begin
 		if (!reset)
 			mat_we <= {FILTER_CORE_DIM{1'b0}};
-		else
+		else if (m_axis_video_tready)
 			// LINE_TRANS -> LINE_FIST_LINE
 			if (col_state == COL_FIRST && rxt && line_state == LINE_FIST_LINE)
 				for (t=0; t<FILTER_CORE_DIM; t=t+1)
@@ -243,7 +248,7 @@ module stream_video_filter(
 			for (i=0; i<FILTER_CORE_DIM; i=i+1)
 				for (j=0; j<FILTER_CORE_DIM; j=j+1)
 					matrix_data[i][j] <= 0;
-		else begin
+		else if (m_axis_video_tready) begin
 			// first, shift the data
 			for (i=0; i<FILTER_CORE_DIM; i=i+1)
 				for (j=1; j<FILTER_CORE_DIM; j=j+1)
@@ -292,7 +297,7 @@ module stream_video_filter(
 					mul_out_matrix[i][j][1] <= 'b0;
 					mul_out_matrix[i][j][2] <= 'b0;
 				end
-		else
+		else if (m_axis_video_tready)
 			for (i=0; i<FILTER_CORE_DIM; i=i+1)
 				for (j=0; j<FILTER_CORE_DIM; j=j+1) begin
 
@@ -318,7 +323,7 @@ module stream_video_filter(
 		if (!reset)
 			for (t=0; t<3; t=t+1)
 				conv_sum[t] <= 'b0;
-		else
+		else if (m_axis_video_tready)
 			for (t=0; t<3; t=t+1)
 				conv_sum[t] = 'b0;
 			for (t=0; t<3; t=t+1)
@@ -331,7 +336,7 @@ module stream_video_filter(
 		if (!reset)
 			for (t=0; t<3; t=t+1)
 				conv_div[t] <= 'b0;
-		else
+		else if (m_axis_video_tready)
 			for (t=0; t<3; t=t+1)
 				conv_div[t] <= conv_sum[t] * NORM_FACTOR / 2**16;
 	end
@@ -339,5 +344,6 @@ module stream_video_filter(
 	assign m_axis_video_tdata  = {conv_div[0][7:0], conv_div[1][7:0], conv_div[2][7:0]};
 	assign m_axis_video_tvalid = res_valid[4];
 	assign m_axis_video_tlast  = res_tlast[4];
+	assign m_axis_video_tuser  = res_tuser[5];
 
 endmodule
