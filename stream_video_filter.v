@@ -17,16 +17,16 @@ module stream_video_filter(
 
 	`define SIMULATION = 1;
 
-	parameter FILTER_CORE_DIM = 5;
+	parameter FILTER_DIM = 5;
 
-	localparam LINE_TRANS_NUM = FILTER_CORE_DIM/2;
-	localparam COPY_FIRST = FILTER_CORE_DIM/2;
-	localparam COPY_LAST  = FILTER_CORE_DIM - FILTER_CORE_DIM/2 - 1;
+	localparam LINE_TRANS_NUM = FILTER_DIM/2;
+	localparam COPY_FIRST = FILTER_DIM/2;
+	localparam COPY_LAST  = FILTER_DIM - FILTER_DIM/2 - 1;
 
 	parameter COE_WIDTH = 16;
 	parameter COE_FILE = "../coe.dat";
 
-	reg signed [COE_WIDTH-1:0] coe_matrix [FILTER_CORE_DIM-1:0][FILTER_CORE_DIM-1:0];
+	reg signed [COE_WIDTH-1:0] coe_matrix [FILTER_DIM-1:0][FILTER_DIM-1:0];
 	initial
 		$readmemh(COE_FILE, coe_matrix);
 
@@ -160,11 +160,11 @@ module stream_video_filter(
 
 	parameter MAX_IMG_RES = 20;
 
-	reg [23:0] linebuff [FILTER_CORE_DIM-1:0][MAX_IMG_RES-1:0];
+	reg [23:0] linebuff [FILTER_DIM-1:0][MAX_IMG_RES-1:0];
 
 	reg [15:0] buff_cnt;
 
-	reg [23:0] buff_out[FILTER_CORE_DIM-1:0];
+	reg [23:0] buff_out[FILTER_DIM-1:0];
 
 	always @(posedge clk) begin
 		if (!reset)
@@ -184,16 +184,16 @@ module stream_video_filter(
 	always @(posedge clk) begin
 		if (!reset) begin
 			in_data_buff <= 24'b0;
-			for (i=0; i<FILTER_CORE_DIM; i=i+1)
+			for (i=0; i<FILTER_DIM; i=i+1)
 				for (j=0; j<MAX_IMG_RES; j=j+1)
 					linebuff[i][j] <= 24'b0;
-			for (i=0; i<FILTER_CORE_DIM; i=i+1)
+			for (i=0; i<FILTER_DIM; i=i+1)
 				buff_out[i] <= 24'b0;
 		end else if (m_axis_video_tready)
 			if (rxt) begin
-				for (t=0; t<FILTER_CORE_DIM; t=t+1)
+				for (t=0; t<FILTER_DIM; t=t+1)
 					buff_out[t] <= linebuff[t][buff_cnt];
-				for (t=1; t<FILTER_CORE_DIM; t=t+1)
+				for (t=1; t<FILTER_DIM; t=t+1)
 					linebuff[t][buff_cnt] <= linebuff[t-1][buff_cnt];
 				linebuff[0][buff_cnt] <= s_axis_video_tdata;
 				in_data_buff <= s_axis_video_tdata;
@@ -211,25 +211,25 @@ module stream_video_filter(
 			res_tlast <= 'b0;
 			res_tuser <= 'b0;
 		end else if (m_axis_video_tready) begin
-			res_valid <= {res_valid[3:0], (col_state != COL_FIRST) && (col_state != COL_COPY_FIRST) && (col_state != COL_SECOND)};
-			res_tlast <= {res_tlast[3:0], (col_state == COL_ENDL)};
+			res_valid <= {res_valid[3:0], (col_state != COL_FIRST) && (col_state != COL_COPY_FIRST) && (col_state != COL_SECOND) && (col_state != COL_ENDL)};
+			res_tlast <= {res_tlast[3:0], (col_state == COL_COPY_LAST) && (col_cnt == COPY_LAST - 1)};
 			res_tuser <= {res_tuser[4:0], (col_state == COL_SECOND) && (line_state == LINE_FIST_LINE)};
 		end
 	end
 
 	// -------------------------------- //
 
-	reg [23:0] matrix_data [FILTER_CORE_DIM-1:0][FILTER_CORE_DIM-1:0];
+	reg [23:0] matrix_data [FILTER_DIM-1:0][FILTER_DIM-1:0];
 
-	reg [FILTER_CORE_DIM-1:0] mat_we;
+	reg [FILTER_DIM-1:0] mat_we;
 
 	always @(posedge clk) begin
 		if (!reset)
-			mat_we <= {FILTER_CORE_DIM{1'b0}};
+			mat_we <= {FILTER_DIM{1'b0}};
 		else if (m_axis_video_tready)
 			// LINE_TRANS -> LINE_FIST_LINE
 			if (col_state == COL_FIRST && rxt && line_state == LINE_FIST_LINE)
-				for (t=0; t<FILTER_CORE_DIM; t=t+1)
+				for (t=0; t<FILTER_DIM; t=t+1)
 					mat_we[t] <= (t <= LINE_TRANS_NUM) ? 1'b1 : 1'b0;
 
 			// LINE_DATA -> LINE_TRANS
@@ -238,25 +238,25 @@ module stream_video_filter(
 
 			// shift left
 			else if (col_state == COL_FIRST)
-				mat_we <= {mat_we[FILTER_CORE_DIM-2:0], mat_we[0]};
+				mat_we <= {mat_we[FILTER_DIM-2:0], mat_we[0]};
 	end
 
 	reg [23:0] data_tmp = 24'b0;
 
 	always @(posedge clk) begin
 		if (!reset)
-			for (i=0; i<FILTER_CORE_DIM; i=i+1)
-				for (j=0; j<FILTER_CORE_DIM; j=j+1)
+			for (i=0; i<FILTER_DIM; i=i+1)
+				for (j=0; j<FILTER_DIM; j=j+1)
 					matrix_data[i][j] <= 0;
 		else if (m_axis_video_tready) begin
 			// first, shift the data
-			for (i=0; i<FILTER_CORE_DIM; i=i+1)
-				for (j=1; j<FILTER_CORE_DIM; j=j+1)
+			for (i=0; i<FILTER_DIM; i=i+1)
+				for (j=1; j<FILTER_DIM; j=j+1)
 					matrix_data[i][j] <= matrix_data[i][j-1];
 
 			// then update first column
 			if (line_state == LINE_TRANS) begin
-				for (t=0; t<FILTER_CORE_DIM; t=t+1) begin
+				for (t=0; t<FILTER_DIM; t=t+1) begin
 					// fill from buffer according to mask
 					if (mat_we[t])
 						matrix_data[t][0] <= buff_out[t-1];
@@ -266,7 +266,7 @@ module stream_video_filter(
 						matrix_data[t][0] <= buff_out[line_cnt];
 				end
 			end else begin
-				for (t=1; t<FILTER_CORE_DIM; t=t+1) begin
+				for (t=1; t<FILTER_DIM; t=t+1) begin
 					// fill from buffer according to mask
 					if (mat_we[t]) begin
 						matrix_data[t][0] <= buff_out[t-1];
@@ -284,22 +284,22 @@ module stream_video_filter(
 
 	// -------------------------------- //
 
-	reg signed [8:0] mul_out_matrix [FILTER_CORE_DIM-1:0][FILTER_CORE_DIM-1:0][2:0];
+	reg signed [8:0] mul_out_matrix [FILTER_DIM-1:0][FILTER_DIM-1:0][2:0];
 
 	// 1 sign + 8 data + COE_WIDTH coeff - 1 coeff sign
 	reg signed [8+COE_WIDTH:0] reg_rgb[2:0];
 
 	always @(posedge clk) begin
 		if (!reset)
-			for (i=0; i<FILTER_CORE_DIM; i=i+1)
-				for (j=0; j<FILTER_CORE_DIM; j=j+1) begin
+			for (i=0; i<FILTER_DIM; i=i+1)
+				for (j=0; j<FILTER_DIM; j=j+1) begin
 					mul_out_matrix[i][j][0] <= 'b0;
 					mul_out_matrix[i][j][1] <= 'b0;
 					mul_out_matrix[i][j][2] <= 'b0;
 				end
 		else if (m_axis_video_tready)
-			for (i=0; i<FILTER_CORE_DIM; i=i+1)
-				for (j=0; j<FILTER_CORE_DIM; j=j+1) begin
+			for (i=0; i<FILTER_DIM; i=i+1)
+				for (j=0; j<FILTER_DIM; j=j+1) begin
 
 					// note: matrix_data is flipped horizontally and vertically
 					reg_rgb[0] = $signed({1'b0, matrix_data[i][j][23:16]}) * coe_matrix[i][j];
@@ -314,7 +314,7 @@ module stream_video_filter(
 
 	// -------------------------------- //
 
-	parameter integer NORM_FACTOR = (2**16)/(FILTER_CORE_DIM**2);
+	parameter integer NORM_FACTOR = (2**16)/(FILTER_DIM**2);
 
 	reg signed [23:0] conv_sum[2:0];
 	reg signed [23:0] conv_div[2:0];
@@ -327,8 +327,8 @@ module stream_video_filter(
 			for (t=0; t<3; t=t+1)
 				conv_sum[t] = 'b0;
 			for (t=0; t<3; t=t+1)
-				for (i=0; i<FILTER_CORE_DIM; i=i+1)
-					for (j=0; j<FILTER_CORE_DIM; j=j+1)
+				for (i=0; i<FILTER_DIM; i=i+1)
+					for (j=0; j<FILTER_DIM; j=j+1)
 						conv_sum[t] = conv_sum[t] + mul_out_matrix[i][j][t];
 	end
 

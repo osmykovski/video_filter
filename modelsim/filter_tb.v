@@ -18,7 +18,7 @@ module filter_tb();
 
 	stream_video_filter
 	#(
-		.FILTER_CORE_DIM(5)
+		.FILTER_DIM(5)
 	)
 	UUT (
 		.clk                 (clk      ),
