@@ -323,13 +323,14 @@ module stream_video_filter(
 		if (!reset)
 			for (t=0; t<3; t=t+1)
 				conv_sum[t] <= 'b0;
-		else if (m_axis_video_tready)
+		else if (m_axis_video_tready) begin
 			for (t=0; t<3; t=t+1)
 				conv_sum[t] = 'b0;
 			for (t=0; t<3; t=t+1)
 				for (i=0; i<FILTER_DIM; i=i+1)
 					for (j=0; j<FILTER_DIM; j=j+1)
 						conv_sum[t] = conv_sum[t] + mul_out_matrix[i][j][t];
+		end
 	end
 
 	always @(posedge clk) begin

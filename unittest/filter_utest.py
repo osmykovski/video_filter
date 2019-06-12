@@ -117,9 +117,9 @@ class TestStreamVideoFilter(unittest.TestCase):
                 if m_tuser:
                     tuser_count += 1
                 if tuser_count == 1:
-                    out_im.append(int(m_tdata[:16]))
-                    out_im.append(int(m_tdata[15:8]))
-                    out_im.append(int(m_tdata[7:0]))
+                    out_im.append(int(m_tdata[24:16]))
+                    out_im.append(int(m_tdata[16:8]))
+                    out_im.append(int(m_tdata[8:0]))
     
     def test_Identity(self):
 
@@ -138,15 +138,13 @@ class TestStreamVideoFilter(unittest.TestCase):
             'coe_file': 'IDENTITY_COEF',
             'max_img_res': 300,
             'norm_factor': 2**16}
-        
-        line_buff = []
-        for i in range(256):
-            line_buff = []
-            for j in range(256):
-                line_buff.append([j, j, j])
-            ref_image.append(line_buff)
-        
-        ref_image = np.array(ref_image)
+            
+        urllib.request.urlretrieve(
+            "https://upload.wikimedia.org/wikipedia/commons/5/50/Vd-Orig.png",
+            "orig.png")
+
+        img_file = Image.open('orig.png').convert('RGB')
+        ref_image = np.array(img_file)
         
         UUT_inst = UUT(clk, reset, s_tdata, s_tvalid, s_tready, s_tuser,
             s_tlast, m_tdata, m_tvalid, m_tready, m_tuser, m_tlast, testparams)
@@ -164,7 +162,6 @@ class TestStreamVideoFilter(unittest.TestCase):
         
         # calculate diffrence
         
-        ref_image = np.array(ref_image)
         out_image = np.array(out_image).reshape(np.shape(ref_image))
         image_diff = np.absolute(ref_image - out_image)
         
