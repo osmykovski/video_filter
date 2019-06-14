@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from myhdl import Simulation, StopSimulation, Signal, delay, concat, \
-                  intbv, negedge, posedge, now, Cosimulation
+                  intbv, negedge, posedge, now, Cosimulation, always, \
+                  always_comb, modbv
 
 # tests:
 #     Identity
@@ -24,10 +25,10 @@ from myhdl import Simulation, StopSimulation, Signal, delay, concat, \
 cmd = 'vsim -c -quiet -pli myhdl_vpi.dll -do cosim.do filter_test'
 
 def UUT(clk, reset,
-    s_axis_video_tdata, s_axis_video_tvalid, s_axis_video_tready,
-    s_axis_video_tuser, s_axis_video_tlast,
-    m_axis_video_tdata, m_axis_video_tvalid, m_axis_video_tready,
-    m_axis_video_tuser, m_axis_video_tlast, tp):
+        s_axis_video_tdata, s_axis_video_tvalid, s_axis_video_tready,
+        s_axis_video_tuser, s_axis_video_tlast,
+        m_axis_video_tdata, m_axis_video_tvalid, m_axis_video_tready,
+        m_axis_video_tuser, m_axis_video_tlast, tp):
     os.system('clear_simulation.bat')
     os.system('vlog -quiet ../stream_video_filter.v \
         +define+FILTER_DIM=%d \
@@ -58,68 +59,74 @@ def UUT(clk, reset,
 
 class TestStreamVideoFilter(unittest.TestCase):
     
-    def СlockGen(self, clock):
+    def ClockGen(self, clock):
         while 1:
             yield delay(10)
             clock.next = not clock
-    
+
     def ResetGen(self, reset):
         reset.next = 0
         yield delay(20)
         reset.next = 1
+    
+    def RxFrame(self, m_tdata, m_tvalid, m_tready, m_tuser, clock, reset, 
+            tuser_count, out_im):
         
-    def RunControl(self, m_tuser, clock):
-        tuser_count = 0
-        while 1:
-            yield posedge(clock)
-            if m_tuser:
-                tuser_count += 1
-                if tuser_count == 2:
-                    raise StopSimulation
-    
-    def TxFrame(self, s_tdata, s_tvalid, s_tready, s_tuser, s_tlast,
-                clock, ref_im):
-        yield delay(30)
-        count_line, count_col = [0, 0]
-        while 1:
-            yield posedge(clock)
-            s_tvalid.next = random.getrandbits(1)
-            s_tvalid.next = 1
-            
-            if (s_tvalid == 1 and s_tready == 1):
-                # update data
-                s_tdata.next = concat(
-                    intbv(int(ref_im[count_line][count_col][0]), 0, 256),
-                    intbv(int(ref_im[count_line][count_col][1]), 0, 256),
-                    intbv(int(ref_im[count_line][count_col][2]), 0, 256))
-            
-                # start of frame
-                s_tuser.next = (count_line == 0 and count_col == 0)
-                
-                # end of line
-                s_tlast.next = (count_col == (ref_im.shape[1]-1))
-                
-                # increment counters
-                count_col += 1
-                if count_col == ref_im.shape[1]:
-                    count_col = 0
-                    count_line = (count_line + 1) % ref_im.shape[0]
-    
-    def RxFrame(self, m_tdata, m_tvalid, m_tready, m_tuser, m_tlast,
-                clock, out_im):
-        yield delay(30)
-        tuser_count = 0
-        while 1:
-            yield posedge(clock)
+        @always(clock.negedge)
+        def CountTU():
+            if not reset:
+                tuser_count.next = 0
+            elif m_tvalid and m_tready and m_tuser:
+                tuser_count.next += 1
+        
+        @always(clock.posedge)
+        def GetFrame():
             m_tready.next = random.getrandbits(1)
-            m_tready.next = 1
-            if m_tvalid == 1 and m_tready == 1:
-                if m_tuser:
-                    tuser_count += 1
+            if m_tvalid and m_tready:
                 if tuser_count == 1:
                     out_im.append(int(m_tdata[24:16]))
                     out_im.append(int(m_tdata[16:8]))
                     out_im.append(int(m_tdata[8:0]))
+        
+        @always(clock.posedge)
+        def SimTermination():
+            if tuser_count == 2:
+                raise StopSimulation
+        
+        return CountTU, GetFrame, SimTermination
+    
+    def TxFrame(self, s_tdata, s_tvalid, s_tready, s_tuser, s_tlast,
+            clock, reset, ref_im, count_line, count_col):
+
+        @always_comb
+        def SetTxData():
+            if reset:
+                # start of frame
+                s_tuser.next = (count_line == 0 and count_col == 0)
+                
+                # end of line
+                s_tlast.next = (count_col == count_col.max-1)
+                
+                # update data
+                sub_0 = int(ref_im[count_line][count_col][0])
+                sub_1 = int(ref_im[count_line][count_col][1])
+                sub_2 = int(ref_im[count_line][count_col][2])
+                
+                s_tdata.next = concat(
+                    intbv(sub_0, 0, 256),
+                    intbv(sub_1, 0, 256),
+                    intbv(sub_2, 0, 256))
+        
+        @always(clock.posedge)
+        def TxDataCount():
+            if reset:
+                s_tvalid.next = random.getrandbits(1)
+                if (s_tvalid and s_tready):
+                    count_col.next += 1
+                    if count_col == count_col.max-1:
+                        count_line.next += 1
+        
+        return SetTxData, TxDataCount
     
     def test_Identity(self):
 
@@ -141,23 +148,32 @@ class TestStreamVideoFilter(unittest.TestCase):
             
         urllib.request.urlretrieve(
             "https://upload.wikimedia.org/wikipedia/commons/5/50/Vd-Orig.png",
-            "orig.png")
+            "identity.png")
 
-        img_file = Image.open('orig.png').convert('RGB')
+        img_file = Image.open('identity.png').convert('RGB')
         ref_image = np.array(img_file)
+        
+        
+        count_line = Signal(modbv(0, min=0, max=ref_image.shape[0]))
+        count_col = Signal(modbv(0, min=0, max=ref_image.shape[1]))
+        tuser_count = Signal(modbv(0, min=0, max=3))
         
         UUT_inst = UUT(clk, reset, s_tdata, s_tvalid, s_tready, s_tuser,
             s_tlast, m_tdata, m_tvalid, m_tready, m_tuser, m_tlast, testparams)
-        CLK_inst = self.СlockGen(clk)
+        CLK_inst = self.ClockGen(clk)
+        TX_inst = self.TxFrame(s_tdata, s_tvalid, s_tready, s_tuser, s_tlast,
+            clk, reset, ref_image, count_line, count_col)
         RST_inst = self.ResetGen(reset)
-        TX_inst = self.TxFrame(
-            s_tdata, s_tvalid, s_tready, s_tuser, s_tlast, clk, ref_image)
-        RX_inst = self.RxFrame(
-            m_tdata, m_tvalid, m_tready, m_tuser, m_tlast, clk, out_image)
-        CRTL_inst = self.RunControl(m_tuser, clk)
+        RX_inst = self.RxFrame(m_tdata, m_tvalid, m_tready, m_tuser,
+            clk, reset, tuser_count, out_image)
         
         sim = Simulation(
-            UUT_inst, CLK_inst, RST_inst, TX_inst, RX_inst, CRTL_inst)
+            UUT_inst,
+            CLK_inst,
+            RST_inst,
+            TX_inst,
+            RX_inst
+        )
         sim.run()
         
         # calculate diffrence
@@ -177,8 +193,6 @@ class TestStreamVideoFilter(unittest.TestCase):
         plt.imshow(image_diff)
 
         plt.show()
-        
-        pass
 
 
 
