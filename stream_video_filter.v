@@ -24,7 +24,7 @@ module stream_video_filter(
 	localparam COPY_LAST  = FILTER_DIM - FILTER_DIM/2 - 1;
 
 	parameter COE_WIDTH = 16;
-	parameter COE_FILE = "../coe.dat";
+	parameter COE_FILE = "coe.dat";
 
 	reg signed [COE_WIDTH-1:0] coe_matrix [FILTER_DIM-1:0][FILTER_DIM-1:0];
 	initial
@@ -204,8 +204,9 @@ module stream_video_filter(
 
 	// -------------------------------- //
 
-	reg [3:0] res_valid, res_tlast;
-	reg [4:0] res_tuser;
+	reg [3+(FILTER_DIM/2):0] res_valid;
+	reg [2+(FILTER_DIM/2):0] res_tlast;
+	reg [3+(FILTER_DIM/2):0] res_tuser;
 
 	always @(posedge clk) begin
 		if (!reset) begin
@@ -213,18 +214,17 @@ module stream_video_filter(
 			res_tlast <= 'b0;
 			res_tuser <= 'b0;
 		end else if (m_axis_video_tready && s_axis_video_tvalid) begin
-			res_valid <= {res_valid[2:0],
-				(col_state != COL_FIRST) &&
-				(col_state != COL_COPY_FIRST) &&
-				(col_state != COL_SECOND) &&
-				(col_state != COL_ENDL)
+			res_valid <= {res_valid[2+(FILTER_DIM/2):0],
+				((col_state == COL_COPY_FIRST) && (col_cnt == COPY_FIRST - 1)) ||
+				(col_state == COL_SECOND) ||
+				(col_state == COL_REMAINING)
 			};
-			res_tlast <= {res_tlast[2:0],
+			res_tlast <= {res_tlast[1+(FILTER_DIM/2):0],
 				(col_state == COL_COPY_LAST) &&
-				(col_cnt == COPY_LAST - 1)
+				(col_cnt == 0)
 			};
-			res_tuser <= {res_tuser[3:0],
-				(col_state == COL_SECOND) &&
+			res_tuser <= {res_tuser[2+(FILTER_DIM/2):0],
+				((col_state == COL_COPY_FIRST) && (col_cnt == COPY_FIRST - 1)) &&
 				(line_state == LINE_FIST_LINE)
 			};
 		end
@@ -297,10 +297,8 @@ module stream_video_filter(
 
 	// -------------------------------- //
 
-	reg signed [8:0] mul_out_matrix [FILTER_DIM-1:0][FILTER_DIM-1:0][2:0];
-
 	// 1 sign + 8 data + COE_WIDTH coeff - 1 coeff sign
-	reg signed [8+COE_WIDTH:0] reg_rgb[2:0];
+	reg signed [8+COE_WIDTH:0] mul_out_matrix [FILTER_DIM-1:0][FILTER_DIM-1:0][2:0];
 
 	always @(posedge clk) begin
 		if (!reset)
@@ -315,13 +313,9 @@ module stream_video_filter(
 				for (j=0; j<FILTER_DIM; j=j+1) begin
 
 					// note: matrix_data is flipped horizontally and vertically
-					reg_rgb[0] = $signed({1'b0, matrix_data[i][j][23:16]}) * coe_matrix[i][j];
-					reg_rgb[1] = $signed({1'b0, matrix_data[i][j][15:8]})  * coe_matrix[i][j];
-					reg_rgb[2] = $signed({1'b0, matrix_data[i][j][7:0]})   * coe_matrix[i][j];
-
-					mul_out_matrix[i][j][0] <= reg_rgb[0] / 2**(COE_WIDTH-1);
-					mul_out_matrix[i][j][1] <= reg_rgb[1] / 2**(COE_WIDTH-1);
-					mul_out_matrix[i][j][2] <= reg_rgb[2] / 2**(COE_WIDTH-1);
+					mul_out_matrix[i][j][0] <= $signed({1'b0, matrix_data[i][j][23:16]}) * coe_matrix[i][j];
+					mul_out_matrix[i][j][1] <= $signed({1'b0, matrix_data[i][j][15:8]})  * coe_matrix[i][j];
+					mul_out_matrix[i][j][2] <= $signed({1'b0, matrix_data[i][j][7:0]})   * coe_matrix[i][j];
 				end
 	end
 
@@ -329,8 +323,8 @@ module stream_video_filter(
 
 	parameter integer NORM_FACTOR = (2**16)/(FILTER_DIM**2);
 
-	reg signed [23:0] conv_sum[2:0];
-	reg signed [23:0] conv_div[2:0];
+	reg signed [31:0] conv_sum[2:0];
+	reg signed [31:0] conv_div[2:0];
 
 	always @(posedge clk) begin
 		if (!reset)
@@ -355,9 +349,14 @@ module stream_video_filter(
 				conv_div[t] <= conv_sum[t] * NORM_FACTOR / 2**16;
 	end
 	
-	assign m_axis_video_tdata  = {conv_div[0][7:0], conv_div[1][7:0], conv_div[2][7:0]};
-	assign m_axis_video_tvalid = res_valid[3] && s_axis_video_tvalid;
-	assign m_axis_video_tlast  = res_tlast[3];
-	assign m_axis_video_tuser  = res_tuser[4];
+	assign m_axis_video_tvalid = res_valid[3+(FILTER_DIM/2)] && s_axis_video_tvalid;
+	assign m_axis_video_tlast  = res_tlast[2+(FILTER_DIM/2)];
+	assign m_axis_video_tuser  = res_tuser[3+(FILTER_DIM/2)];
+	
+	assign m_axis_video_tdata  = {
+		$signed(conv_div[0]) < 0 ? 8'h00 : $signed(conv_div[0]) > 255 ? 8'hFF : conv_div[0][7:0],
+		$signed(conv_div[1]) < 0 ? 8'h00 : $signed(conv_div[1]) > 255 ? 8'hFF : conv_div[1][7:0],
+		$signed(conv_div[2]) < 0 ? 8'h00 : $signed(conv_div[2]) > 255 ? 8'hFF : conv_div[2][7:0]
+	};
 
 endmodule

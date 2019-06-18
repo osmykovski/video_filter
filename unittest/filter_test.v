@@ -52,6 +52,14 @@ module filter_test;
 	);
 	
 	localparam IDENTITY_COEF = "./coefficients/coef_identity.txt";
+	localparam EDETECT1_COEF = "./coefficients/coef_edetect1.txt";
+	localparam EDETECT2_COEF = "./coefficients/coef_edetect2.txt";
+	localparam EDETECT3_COEF = "./coefficients/coef_edetect3.txt";
+	localparam SHARPEN_COEF = "./coefficients/coef_sharpen.txt";
+	localparam BOX_BLUR_COEF = "./coefficients/coef_box_blur.txt";
+	localparam GAUSSIAN_BLUR_COEF = "./coefficients/coef_gaussian_blur.txt";
+	localparam GAUSSIAN_BLUR_5_5_COEF = "./coefficients/coef_gaussian_blur_5_5.txt";
+	localparam UNSHARP_MASKING_COEF = "./coefficients/coef_unsharp_masking.txt";
 	
 	defparam dut.FILTER_DIM      = `FILTER_DIM     ;
 	defparam dut.COE_WIDTH       = `COE_WIDTH      ;

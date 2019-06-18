@@ -19,7 +19,7 @@ module filter_tb();
 
 	stream_video_filter
 	#(
-		.FILTER_DIM(5)
+		.FILTER_DIM(7)
 	)
 	UUT (
 		.clk                 (clk      ),
@@ -39,9 +39,7 @@ module filter_tb();
 	);
 
 	always begin : clock_gen
-		clk = 1'b1;
-		#(PERIOD/2);
-		clk = 1'b0;
+		clk = ~clk;
 		#(PERIOD/2);
 	end
 
