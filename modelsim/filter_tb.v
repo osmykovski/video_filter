@@ -13,9 +13,9 @@ module filter_tb();
 	wire m_tvalid, m_tuser, m_tlast, s_tready;
 	
 	always @(posedge clk) s_tdata = $random;
-	always @(posedge clk) s_tvalid = $random;
+	// always @(posedge clk) s_tvalid = $random;
 
-	always @(posedge clk) m_tready = $random;
+	// always @(posedge clk) m_tready = $random;
 
 	stream_video_filter
 	#(
@@ -86,8 +86,8 @@ module filter_tb();
 	// -------------------------------- //
 
 	initial begin : rst_gen
-		// s_tvalid = 1'b1;
-		// m_tready = 1'b1;
+		s_tvalid = 1'b1;
+		m_tready = 1'b1;
 		#100;
 		rst <= 1'b1;
 	end

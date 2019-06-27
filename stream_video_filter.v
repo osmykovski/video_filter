@@ -15,15 +15,15 @@ module stream_video_filter(
 	output          m_axis_video_tlast          // End Of Line
 );
 
-	`define SIMULATION = 1;
+	// `define SIMULATION = 1;
 
-	parameter FILTER_DIM = 5;
+	parameter FILTER_DIM = 3;
 
 	localparam LINE_TRANS_NUM = FILTER_DIM/2;
 	localparam COPY_FIRST = FILTER_DIM/2;
 	localparam COPY_LAST  = FILTER_DIM - FILTER_DIM/2 - 1;
 
-	parameter COE_WIDTH = 16;
+	parameter COE_WIDTH = 8;
 	parameter COE_FILE = "coe.dat";
 
 	reg signed [COE_WIDTH-1:0] coe_matrix [FILTER_DIM-1:0][FILTER_DIM-1:0];
@@ -160,35 +160,39 @@ module stream_video_filter(
 
 	// -------------------------------- //
 
-	parameter MAX_IMG_RES = 20;
+	parameter MAX_IMG_RES = 200;
 
 	reg [23:0] linebuff [FILTER_DIM-1:0][MAX_IMG_RES-1:0];
 
-	reg [15:0] buff_cnt;
+	reg [15:0] buff_cnt, cnt_z;
 
 	reg [23:0] buff_out[FILTER_DIM-1:0];
 
 	always @(posedge clk) begin
-		if (!reset)
+		if (!reset) begin
 			buff_cnt <= 0;
-		else if (m_axis_video_tready && rxt) begin
+			cnt_z <= 0;
+		end	else if (m_axis_video_tready && rxt) begin
 			if (s_axis_video_tlast)
 				buff_cnt <= 0;
 			else
 				buff_cnt <= buff_cnt + 1;
+			cnt_z <= buff_cnt;
 		end
 	end
 
 	integer i, j, t;
 
 	reg [23:0] in_data_buff;
+	
+	// TODO: linebuff can't map to RAM
 
 	always @(posedge clk) begin
 		if (!reset) begin
 			in_data_buff <= 24'b0;
-			for (i=0; i<FILTER_DIM; i=i+1)
-				for (j=0; j<MAX_IMG_RES; j=j+1)
-					linebuff[i][j] <= 24'b0;
+			// for (i=0; i<FILTER_DIM; i=i+1)
+				// for (j=0; j<MAX_IMG_RES; j=j+1)
+					// linebuff[i][j] <= 24'b0;
 			for (i=0; i<FILTER_DIM; i=i+1)
 				buff_out[i] <= 24'b0;
 		end else if (m_axis_video_tready)
@@ -196,7 +200,8 @@ module stream_video_filter(
 				for (t=0; t<FILTER_DIM; t=t+1)
 					buff_out[t] <= linebuff[t][buff_cnt];
 				for (t=1; t<FILTER_DIM; t=t+1)
-					linebuff[t][buff_cnt] <= linebuff[t-1][buff_cnt];
+					linebuff[t][cnt_z] <= buff_out[t-1];
+					// linebuff[t][buff_cnt] <= linebuff[t-1][buff_cnt];
 				linebuff[0][buff_cnt] <= s_axis_video_tdata;
 				in_data_buff <= s_axis_video_tdata;
 			end
@@ -272,6 +277,7 @@ module stream_video_filter(
 				for (t=0; t<FILTER_DIM; t=t+1) begin
 					// fill from buffer according to mask
 					if (mat_we[t])
+						// never happen when t == 0
 						matrix_data[t][0] <= buff_out[t-1];
 
 					// fill the last lines with the same data
@@ -321,7 +327,7 @@ module stream_video_filter(
 
 	// -------------------------------- //
 
-	parameter integer NORM_FACTOR = (2**16)/(FILTER_DIM**2);
+	parameter integer NORM_FACTOR = 1;
 
 	reg signed [31:0] conv_sum[2:0];
 	reg signed [31:0] conv_div[2:0];
