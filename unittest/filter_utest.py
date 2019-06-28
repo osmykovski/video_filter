@@ -20,6 +20,7 @@ def UUT(clk, reset,
         m_axis_video_tdata, m_axis_video_tvalid, m_axis_video_tready,
         m_axis_video_tuser, m_axis_video_tlast, tp):
     os.system('vlog -quiet ../stream_video_filter.v \
+        +define+SIMULATION \
         +define+FILTER_DIM=%d \
         +define+COE_WIDTH=%d \
         +define+COE_FILE_NAME=%s \

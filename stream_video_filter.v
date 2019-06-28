@@ -15,8 +15,6 @@ module stream_video_filter(
 	output          m_axis_video_tlast          // End Of Line
 );
 
-	// `define SIMULATION = 1;
-
 	parameter FILTER_DIM = 3;
 
 	localparam LINE_TRANS_NUM = FILTER_DIM/2;
@@ -26,10 +24,12 @@ module stream_video_filter(
 	parameter COE_WIDTH = 8;
 	parameter COE_FILE = "coe.dat";
 
-	reg signed [COE_WIDTH-1:0] coe_matrix [FILTER_DIM-1:0][FILTER_DIM-1:0];
+	integer i, j, t;
+	
+	reg signed [COE_WIDTH-1:0] coe_matrix [FILTER_DIM*FILTER_DIM-1:0];
 	initial
 		$readmemh(COE_FILE, coe_matrix);
-
+	
 	wire rxt; // rx transfer
 
 	reg [7:0] line_cnt;
@@ -162,11 +162,11 @@ module stream_video_filter(
 
 	parameter MAX_IMG_RES = 200;
 
-	reg [23:0] linebuff [FILTER_DIM-1:0][MAX_IMG_RES-1:0];
+	reg [24*FILTER_DIM-1:0] linebuff [MAX_IMG_RES-1:0];
 
 	reg [15:0] buff_cnt, cnt_z;
 
-	reg [23:0] buff_out[FILTER_DIM-1:0];
+	reg [24*FILTER_DIM-1:0] buff_out;
 
 	always @(posedge clk) begin
 		if (!reset) begin
@@ -181,28 +181,16 @@ module stream_video_filter(
 		end
 	end
 
-	integer i, j, t;
-
 	reg [23:0] in_data_buff;
-	
-	// TODO: linebuff can't map to RAM
 
 	always @(posedge clk) begin
 		if (!reset) begin
 			in_data_buff <= 24'b0;
-			// for (i=0; i<FILTER_DIM; i=i+1)
-				// for (j=0; j<MAX_IMG_RES; j=j+1)
-					// linebuff[i][j] <= 24'b0;
-			for (i=0; i<FILTER_DIM; i=i+1)
-				buff_out[i] <= 24'b0;
+			buff_out <= 'b0;
 		end else if (m_axis_video_tready)
 			if (rxt) begin
-				for (t=0; t<FILTER_DIM; t=t+1)
-					buff_out[t] <= linebuff[t][buff_cnt];
-				for (t=1; t<FILTER_DIM; t=t+1)
-					linebuff[t][cnt_z] <= buff_out[t-1];
-					// linebuff[t][buff_cnt] <= linebuff[t-1][buff_cnt];
-				linebuff[0][buff_cnt] <= s_axis_video_tdata;
+				buff_out <= linebuff[buff_cnt];
+				linebuff[cnt_z] <= {buff_out[24*(FILTER_DIM-1)-1:0], in_data_buff};
 				in_data_buff <= s_axis_video_tdata;
 			end
 	end
@@ -260,6 +248,14 @@ module stream_video_filter(
 	end
 
 	reg [23:0] data_tmp = 24'b0;
+	
+	function [23:0] get_pix;
+	input [24*FILTER_DIM-1:0] vect;
+	input ptr;
+		begin
+			get_pix = vect[24*ptr +: 24];
+		end
+	endfunction
 
 	always @(posedge clk) begin
 		if (!reset)
@@ -278,18 +274,18 @@ module stream_video_filter(
 					// fill from buffer according to mask
 					if (mat_we[t])
 						// never happen when t == 0
-						matrix_data[t][0] <= buff_out[t-1];
+						matrix_data[t][0] <= get_pix(buff_out, t-1);
 
 					// fill the last lines with the same data
 					else
-						matrix_data[t][0] <= buff_out[line_cnt];
+						matrix_data[t][0] <= get_pix(buff_out, line_cnt);
 				end
 			end else begin
 				for (t=1; t<FILTER_DIM; t=t+1) begin
 					// fill from buffer according to mask
 					if (mat_we[t]) begin
-						matrix_data[t][0] <= buff_out[t-1];
-						data_tmp = buff_out[t-1];
+						matrix_data[t][0] <= get_pix(buff_out, t-1);
+						data_tmp = get_pix(buff_out, t-1);
 
 					// repeat last line
 					end else matrix_data[t][0] <= data_tmp;
@@ -319,9 +315,9 @@ module stream_video_filter(
 				for (j=0; j<FILTER_DIM; j=j+1) begin
 
 					// note: matrix_data is flipped horizontally and vertically
-					mul_out_matrix[i][j][0] <= $signed({1'b0, matrix_data[i][j][23:16]}) * coe_matrix[i][j];
-					mul_out_matrix[i][j][1] <= $signed({1'b0, matrix_data[i][j][15:8]})  * coe_matrix[i][j];
-					mul_out_matrix[i][j][2] <= $signed({1'b0, matrix_data[i][j][7:0]})   * coe_matrix[i][j];
+					mul_out_matrix[i][j][0] <= $signed({1'b0, matrix_data[i][j][23:16]}) * coe_matrix[j+i*FILTER_DIM];
+					mul_out_matrix[i][j][1] <= $signed({1'b0, matrix_data[i][j][15:8]})  * coe_matrix[j+i*FILTER_DIM];
+					mul_out_matrix[i][j][2] <= $signed({1'b0, matrix_data[i][j][7:0]})   * coe_matrix[j+i*FILTER_DIM];
 				end
 	end
 
