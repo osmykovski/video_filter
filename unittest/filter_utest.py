@@ -229,7 +229,7 @@ class TestStreamVideoFilter(unittest.TestCase):
 
         return set_tx_data, tx_data_count
 
-    def simulate(self, testparams, ref_image, out_image):
+    def simulate(self, testparams, ref_image):
         # init one bit signals
         [s_tvalid, s_tready, s_tuser, s_tlast,
          m_tvalid, m_tready, m_tuser, m_tlast,
@@ -238,6 +238,8 @@ class TestStreamVideoFilter(unittest.TestCase):
         # init data signals
         s_tdata, m_tdata = [
             Signal(intbv(0, min=0, max=2**24)) for i in range(2)]
+        
+        out_image = []
 
         # auxiliary signals
         count_line = Signal(modbv(0, min=0, max=ref_image.shape[0]))
@@ -266,6 +268,8 @@ class TestStreamVideoFilter(unittest.TestCase):
             RX_inst
         )
         sim.run()
+        
+        return out_image
 
     def tearDown(self):
         os.system('del transcript')
@@ -275,7 +279,6 @@ class TestStreamVideoFilter(unittest.TestCase):
 
     # Tests
     
-    # @unittest.skip("ok")
     def test_identity(self):
 
         testparams = {
@@ -288,10 +291,8 @@ class TestStreamVideoFilter(unittest.TestCase):
         # get input image
         ref_image = get_img(ref_uri, 'img_in.png')
 
-        out_image = []
-
         # start simulation to get output image
-        self.simulate(testparams, ref_image, out_image)
+        out_image = self.simulate(testparams, ref_image)
 
         # calculate diffrence
         image_diff, out_image = calc_diff(ref_image, out_image)
@@ -299,7 +300,6 @@ class TestStreamVideoFilter(unittest.TestCase):
         # show results
         self.is_identical(ref_image, out_image, image_diff)
     
-    # @unittest.skip("ok")
     def test_edge_detect_1(self):
 
         out_ref_url = (
@@ -321,10 +321,8 @@ class TestStreamVideoFilter(unittest.TestCase):
         # get refrence output image
         ref_out_image = get_img(out_ref_url, 'ref.png')
 
-        out_image = []
-
         # start simulation to get output image
-        self.simulate(testparams, ref_image, out_image)
+        out_image = self.simulate(testparams, ref_image)
 
         # calculate diffrence
         image_diff, out_image = calc_diff(ref_out_image, out_image)
@@ -332,7 +330,6 @@ class TestStreamVideoFilter(unittest.TestCase):
         # show results
         self.is_identical(ref_out_image, out_image, image_diff)
     
-    # @unittest.skip("not ok")
     def test_edge_detect_2(self):
 
         out_ref_url = (
@@ -354,10 +351,8 @@ class TestStreamVideoFilter(unittest.TestCase):
         # get refrence output image
         ref_out_image = get_img(out_ref_url, 'ref.png')
 
-        out_image = []
-
         # start simulation to get output image
-        self.simulate(testparams, ref_image, out_image)
+        out_image = self.simulate(testparams, ref_image)
 
         # calculate diffrence
         out_image = np.array(out_image).reshape(np.shape(ref_out_image))
@@ -366,7 +361,6 @@ class TestStreamVideoFilter(unittest.TestCase):
         # show results
         self.is_identical(ref_out_image, out_image, image_diff)
     
-    # @unittest.skip("not ok")
     def test_edge_detect_3(self):
 
         out_ref_url = (
@@ -388,10 +382,8 @@ class TestStreamVideoFilter(unittest.TestCase):
         # get refrence output image
         ref_out_image = get_img(out_ref_url, 'ref.png')
 
-        out_image = []
-
         # start simulation to get output image
-        self.simulate(testparams, ref_image, out_image)
+        out_image = self.simulate(testparams, ref_image)
 
         # calculate diffrence
         image_diff, out_image = calc_diff(ref_out_image, out_image)
@@ -399,7 +391,6 @@ class TestStreamVideoFilter(unittest.TestCase):
         # show results
         self.is_identical(ref_out_image, out_image, image_diff)
     
-    # @unittest.skip("not ok")
     def test_sharpen(self):
 
         out_ref_url = (
@@ -421,10 +412,8 @@ class TestStreamVideoFilter(unittest.TestCase):
         # get refrence output image
         ref_out_image = get_img(out_ref_url, 'ref.png')
 
-        out_image = []
-
         # start simulation to get output image
-        self.simulate(testparams, ref_image, out_image)
+        out_image = self.simulate(testparams, ref_image)
 
         # calculate diffrence
         image_diff, out_image = calc_diff(ref_out_image, out_image)
@@ -432,7 +421,6 @@ class TestStreamVideoFilter(unittest.TestCase):
         # show results
         self.is_identical(ref_out_image, out_image, image_diff)
     
-    # @unittest.skip("ok")
     def test_box_blur(self):
 
         out_ref_url = (
@@ -454,10 +442,8 @@ class TestStreamVideoFilter(unittest.TestCase):
         # get refrence output image
         ref_out_image = get_img(out_ref_url, 'ref.png')
 
-        out_image = []
-
         # start simulation to get output image
-        self.simulate(testparams, ref_image, out_image)
+        out_image = self.simulate(testparams, ref_image)
 
         # calculate diffrence
         image_diff, out_image = calc_diff(ref_out_image, out_image)
@@ -465,7 +451,6 @@ class TestStreamVideoFilter(unittest.TestCase):
         # show results
         self.is_similar(ref_out_image, out_image, image_diff)
     
-    # @unittest.skip("ok")
     def test_gaussian_blur(self):
 
         out_ref_url = (
@@ -487,10 +472,8 @@ class TestStreamVideoFilter(unittest.TestCase):
         # get refrence output image
         ref_out_image = get_img(out_ref_url, 'ref.png')
 
-        out_image = []
-
         # start simulation to get output image
-        self.simulate(testparams, ref_image, out_image)
+        out_image = self.simulate(testparams, ref_image)
 
         # calculate diffrence
         image_diff, out_image = calc_diff(ref_out_image, out_image)
@@ -498,7 +481,6 @@ class TestStreamVideoFilter(unittest.TestCase):
         # show results
         self.is_similar(ref_out_image, out_image, image_diff)
     
-    # @unittest.skip("ok")
     def test_gaussian_blur_5x5(self):
 
         out_ref_url = (
@@ -520,10 +502,8 @@ class TestStreamVideoFilter(unittest.TestCase):
         # get refrence output image
         ref_out_image = get_img(out_ref_url, 'ref.png')
 
-        out_image = []
-
         # start simulation to get output image
-        self.simulate(testparams, ref_image, out_image)
+        out_image = self.simulate(testparams, ref_image)
 
         # calculate diffrence
         image_diff, out_image = calc_diff(ref_out_image, out_image)
@@ -531,7 +511,6 @@ class TestStreamVideoFilter(unittest.TestCase):
         # show results
         self.is_similar(ref_out_image, out_image, image_diff)
     
-    # @unittest.skip("ok")
     def test_unsharp_masking(self):
 
         out_ref_url = (
@@ -553,10 +532,8 @@ class TestStreamVideoFilter(unittest.TestCase):
         # get refrence output image
         ref_out_image = get_img(out_ref_url, 'ref.png')
 
-        out_image = []
-
         # start simulation to get output image
-        self.simulate(testparams, ref_image, out_image)
+        out_image = self.simulate(testparams, ref_image)
 
         # calculate diffrence
         image_diff, out_image = calc_diff(ref_out_image, out_image)
